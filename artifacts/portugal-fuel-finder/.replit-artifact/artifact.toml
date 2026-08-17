@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Portugal Fuel Finder"
+description = "A location-aware web app that helps drivers across Portugal compare petrol, diesel, and electric charging prices, find the best nearby station, and understand the tradeoff between price and distance."
+version = "1.0.0"
+id = "artifacts/portugal-fuel-finder"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24854
+
+[services.development]
+run = "pnpm --filter @workspace/portugal-fuel-finder run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/portugal-fuel-finder", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/portugal-fuel-finder/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24854"
+BASE_PATH = "/"

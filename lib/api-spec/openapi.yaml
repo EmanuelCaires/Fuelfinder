@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: stations
+    description: Fuel and electric charging station discovery
 paths:
   /healthz:
     get:
@@ -24,6 +26,111 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /stations:
+    get:
+      operationId: listStations
+      tags: [stations]
+      summary: Find nearby fuel and charging stations
+      description: Returns stations across Portugal, optionally filtered by fuel type, place, and distance from a location.
+      parameters:
+        - name: fuelType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [petrol, diesel, electric]
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: latitude
+          in: query
+          required: false
+          schema:
+            type: number
+            format: double
+        - name: longitude
+          in: query
+          required: false
+          schema:
+            type: number
+            format: double
+        - name: maxDistanceKm
+          in: query
+          required: false
+          schema:
+            type: number
+            format: double
+            minimum: 1
+            maximum: 200
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [best, price, distance]
+            default: best
+      responses:
+        "200":
+          description: Matching stations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Station"
+  /stations/{stationId}:
+    get:
+      operationId: getStation
+      tags: [stations]
+      summary: Get a station by id
+      parameters:
+        - name: stationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Station details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Station"
+        "404":
+          description: Station not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /summary:
+    get:
+      operationId: getFuelSummary
+      tags: [stations]
+      summary: Get Portugal fuel price summary
+      description: Returns market averages, cheapest current options, and freshness information for the comparison view.
+      responses:
+        "200":
+          description: Fuel price summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FuelSummary"
+  /regions:
+    get:
+      operationId: listRegions
+      tags: [stations]
+      summary: List Portugal regions with fuel price snapshots
+      responses:
+        "200":
+          description: Regional price snapshots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RegionSnapshot"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +140,150 @@ components:
           type: string
       required:
         - status
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+    Station:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        brand:
+          type: string
+        city:
+          type: string
+        municipality:
+          type: string
+        district:
+          type: string
+        address:
+          type: string
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        distanceKm:
+          type: ["number", "null"]
+          format: double
+        petrolPrice:
+          type: ["number", "null"]
+          format: double
+        dieselPrice:
+          type: ["number", "null"]
+          format: double
+        evPricePerKwh:
+          type: ["number", "null"]
+          format: double
+        evPowerKw:
+          type: ["number", "null"]
+          format: double
+        open24Hours:
+          type: boolean
+        amenities:
+          type: array
+          items:
+            type: string
+        updatedAt:
+          type: string
+          format: date-time
+        rankingLabel:
+          type: ["string", "null"]
+      required:
+        - id
+        - name
+        - brand
+        - city
+        - municipality
+        - district
+        - address
+        - latitude
+        - longitude
+        - distanceKm
+        - petrolPrice
+        - dieselPrice
+        - evPricePerKwh
+        - evPowerKw
+        - open24Hours
+        - amenities
+        - updatedAt
+        - rankingLabel
+    FuelSummary:
+      type: object
+      properties:
+        updatedAt:
+          type: string
+          format: date-time
+        stationsCount:
+          type: number
+        averagePetrol:
+          type: number
+          format: double
+        averageDiesel:
+          type: number
+          format: double
+        averageEv:
+          type: number
+          format: double
+        cheapestPetrol:
+          $ref: "#/components/schemas/PriceLeader"
+        cheapestDiesel:
+          $ref: "#/components/schemas/PriceLeader"
+        cheapestEv:
+          $ref: "#/components/schemas/PriceLeader"
+      required:
+        - updatedAt
+        - stationsCount
+        - averagePetrol
+        - averageDiesel
+        - averageEv
+        - cheapestPetrol
+        - cheapestDiesel
+        - cheapestEv
+    PriceLeader:
+      type: object
+      properties:
+        stationId:
+          type: string
+        stationName:
+          type: string
+        city:
+          type: string
+        price:
+          type: number
+          format: double
+      required:
+        - stationId
+        - stationName
+        - city
+        - price
+    RegionSnapshot:
+      type: object
+      properties:
+        name:
+          type: string
+        stationCount:
+          type: number
+        cheapestPetrol:
+          type: number
+          format: double
+        cheapestDiesel:
+          type: number
+          format: double
+        cheapestEv:
+          type: number
+          format: double
+      required:
+        - name
+        - stationCount
+        - cheapestPetrol
+        - cheapestDiesel
+        - cheapestEv
 
