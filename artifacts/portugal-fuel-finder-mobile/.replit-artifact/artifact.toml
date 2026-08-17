@@ -1,0 +1,24 @@
+kind = "mobile"
+previewPath = "/mobile/"
+title = "Portugal Fuel Finder Mobile"
+description = "A native mobile companion for drivers in Portugal to compare petrol, diesel, and EV charging prices, find the best nearby stop, and open directions from their phone."
+version = "1.0.0"
+id = "artifacts/portugal-fuel-finder-mobile"
+router = "expo-domain"
+
+[[services]]
+name = "expo"
+ensurePreviewReachable = "/status"
+paths = [ "/mobile/" ]
+localPort = 20921
+
+[services.development]
+run = "pnpm --filter @workspace/portugal-fuel-finder-mobile run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/portugal-fuel-finder-mobile", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/portugal-fuel-finder-mobile", "run", "serve" ]
+
+[services.env]
+PORT = "20921"
+BASE_PATH = "/mobile/"
