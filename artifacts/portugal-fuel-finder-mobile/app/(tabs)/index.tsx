@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useCurrentLocation } from '../../hooks/use-current-location';
 
 type Fuel = 'diesel' | 'petrol';
 type Vehicle = {
@@ -27,6 +28,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const [fuel, setFuel] = useState<Fuel>('diesel');
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
+  const currentLocation = useCurrentLocation();
 
   useFocusEffect(
     useCallback(() => {
@@ -88,10 +90,28 @@ export default function HomeScreen() {
           <View style={styles.avatar}><Feather name="user" size={20} color="#152A46" /></View>
         </View>
 
-        <View style={styles.location}>
-          <Feather name="map-pin" size={17} color="#152A46" />
-          <Text style={styles.locationText}>A usar a tua localização</Text>
-        </View>
+        <Pressable style={styles.location} onPress={currentLocation.refresh}>
+          <View style={styles.locationIcon}>
+            <Feather name={currentLocation.status === 'ready' ? 'navigation' : 'map-pin'} size={17} color="#152A46" />
+          </View>
+          <View style={styles.locationInfo}>
+            <Text style={styles.locationText}>
+              {currentLocation.status === 'loading'
+                ? 'A obter a tua localização…'
+                : currentLocation.status === 'ready'
+                  ? currentLocation.label || 'Localização atual'
+                  : currentLocation.status === 'denied'
+                    ? 'Localização desativada'
+                    : 'Não foi possível localizar'}
+            </Text>
+            <Text style={styles.locationMeta}>
+              {currentLocation.status === 'ready' && currentLocation.latitude !== null && currentLocation.longitude !== null
+                ? `${currentLocation.latitude.toFixed(4)}, ${currentLocation.longitude.toFixed(4)} · tocar para atualizar`
+                : currentLocation.error || 'Toca para tentar novamente'}
+            </Text>
+          </View>
+          <Feather name="refresh-cw" size={15} color="#607083" />
+        </Pressable>
 
         <Pressable style={styles.vehicleCard} onPress={() => router.push('/(tabs)/vehicle')}>
           <View style={styles.vehicleIcon}><Feather name="truck" size={18} color="#152A46" /></View>
@@ -152,12 +172,12 @@ export default function HomeScreen() {
           </View>
         ))}
 
-        <View style={styles.dev}><Feather name="info" size={14} color="#607083" /><Text style={styles.devText}>Dados de desenvolvimento enquanto aguardamos a fonte oficial.</Text></View>
+        <View style={styles.dev}><Feather name="info" size={14} color="#607083" /><Text style={styles.devText}>{currentLocation.status === 'ready' ? 'GPS real ativo. Preços, postos e distâncias continuam como dados de demonstração até ligarmos a fonte oficial.' : 'Dados de desenvolvimento enquanto aguardamos a fonte oficial.'}</Text></View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe:{flex:1,backgroundColor:'#F1F7F8'},content:{padding:20,paddingBottom:110,gap:16},brandRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center'},brand:{fontFamily:'Inter_700Bold',fontSize:29,color:'#152A46'},tagline:{fontFamily:'Inter_500Medium',fontSize:14,color:'#607083',marginTop:2},avatar:{width:42,height:42,borderRadius:21,backgroundColor:'#B8E63D',alignItems:'center',justifyContent:'center'},location:{flexDirection:'row',gap:8,alignItems:'center',backgroundColor:'#fff',borderRadius:14,padding:14,borderWidth:1,borderColor:'#CBDCDD'},locationText:{fontFamily:'Inter_600SemiBold',color:'#152A46'},vehicleCard:{flexDirection:'row',alignItems:'center',gap:12,backgroundColor:'#fff',borderRadius:16,padding:14,borderWidth:1,borderColor:'#CBDCDD'},vehicleIcon:{width:42,height:42,borderRadius:13,backgroundColor:'#E8F8A7',alignItems:'center',justifyContent:'center'},vehicleInfo:{flex:1},vehicleLabel:{fontFamily:'Inter_500Medium',fontSize:11,color:'#607083'},vehicleName:{fontFamily:'Inter_700Bold',fontSize:15,color:'#152A46',marginTop:2},vehicleMeta:{fontFamily:'Inter_400Regular',fontSize:11,color:'#607083',marginTop:3},sectionLabel:{fontFamily:'Inter_600SemiBold',color:'#152A46',marginTop:4},segment:{flexDirection:'row',backgroundColor:'#DCEDEF',padding:4,borderRadius:14},segmentButton:{flex:1,padding:12,alignItems:'center',borderRadius:11},segmentActive:{backgroundColor:'#152A46'},segmentText:{fontFamily:'Inter_600SemiBold',color:'#607083'},segmentTextActive:{color:'#E8F8A7'},hero:{backgroundColor:'#152A46',borderRadius:22,padding:20,gap:16},badge:{alignSelf:'flex-start',flexDirection:'row',alignItems:'center',gap:5,backgroundColor:'#B8E63D',borderRadius:20,paddingVertical:6,paddingHorizontal:10},badgeText:{fontFamily:'Inter_700Bold',fontSize:11,color:'#152A46'},heroTop:{flexDirection:'row',justifyContent:'space-between',alignItems:'flex-start'},station:{fontFamily:'Inter_700Bold',fontSize:25,color:'#fff'},place:{fontFamily:'Inter_400Regular',color:'#C8D5DF',marginTop:4},price:{fontFamily:'Inter_700Bold',fontSize:25,color:'#B8E63D'},per:{fontFamily:'Inter_500Medium',fontSize:13},savingBox:{backgroundColor:'#203B5B',borderRadius:16,padding:15},savingLabel:{fontFamily:'Inter_500Medium',color:'#D8E5EC',fontSize:12},saving:{fontFamily:'Inter_700Bold',fontSize:34,color:'#B8E63D',marginVertical:3},breakdown:{flexDirection:'row',flexWrap:'wrap',alignItems:'center',gap:5,marginBottom:6},breakdownText:{fontFamily:'Inter_500Medium',fontSize:11,color:'#D8E5EC'},breakdownDot:{color:'#8EA2B1'},small:{fontFamily:'Inter_400Regular',fontSize:11,color:'#AFC0CC',lineHeight:16},navigate:{height:50,borderRadius:14,backgroundColor:'#203B5B',borderWidth:1,borderColor:'#B8E63D',flexDirection:'row',gap:8,alignItems:'center',justifyContent:'center'},navigateText:{fontFamily:'Inter_700Bold',color:'#E8F8A7'},headingRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',marginTop:4},heading:{fontFamily:'Inter_700Bold',fontSize:18,color:'#152A46'},link:{fontFamily:'Inter_600SemiBold',color:'#497A83'},stationCard:{backgroundColor:'#fff',borderRadius:16,padding:16,borderWidth:1,borderColor:'#CBDCDD',flexDirection:'row',justifyContent:'space-between',alignItems:'center'},cardName:{fontFamily:'Inter_700Bold',fontSize:17,color:'#152A46'},cardMeta:{fontFamily:'Inter_400Regular',fontSize:12,color:'#607083',marginTop:4},right:{alignItems:'flex-end'},cardPrice:{fontFamily:'Inter_700Bold',fontSize:16,color:'#152A46'},cardSaving:{fontFamily:'Inter_600SemiBold',fontSize:12,color:'#58821D',marginTop:4},dev:{flexDirection:'row',gap:7,alignItems:'center',padding:4},devText:{flex:1,fontFamily:'Inter_400Regular',fontSize:11,color:'#607083'}
+  safe:{flex:1,backgroundColor:'#F1F7F8'},content:{padding:20,paddingBottom:110,gap:16},brandRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center'},brand:{fontFamily:'Inter_700Bold',fontSize:29,color:'#152A46'},tagline:{fontFamily:'Inter_500Medium',fontSize:14,color:'#607083',marginTop:2},avatar:{width:42,height:42,borderRadius:21,backgroundColor:'#B8E63D',alignItems:'center',justifyContent:'center'},location:{flexDirection:'row',gap:10,alignItems:'center',backgroundColor:'#fff',borderRadius:14,padding:14,borderWidth:1,borderColor:'#CBDCDD'},locationIcon:{width:34,height:34,borderRadius:11,backgroundColor:'#E8F8A7',alignItems:'center',justifyContent:'center'},locationInfo:{flex:1},locationText:{fontFamily:'Inter_600SemiBold',color:'#152A46'},locationMeta:{fontFamily:'Inter_400Regular',fontSize:10,color:'#607083',marginTop:3},vehicleCard:{flexDirection:'row',alignItems:'center',gap:12,backgroundColor:'#fff',borderRadius:16,padding:14,borderWidth:1,borderColor:'#CBDCDD'},vehicleIcon:{width:42,height:42,borderRadius:13,backgroundColor:'#E8F8A7',alignItems:'center',justifyContent:'center'},vehicleInfo:{flex:1},vehicleLabel:{fontFamily:'Inter_500Medium',fontSize:11,color:'#607083'},vehicleName:{fontFamily:'Inter_700Bold',fontSize:15,color:'#152A46',marginTop:2},vehicleMeta:{fontFamily:'Inter_400Regular',fontSize:11,color:'#607083',marginTop:3},sectionLabel:{fontFamily:'Inter_600SemiBold',color:'#152A46',marginTop:4},segment:{flexDirection:'row',backgroundColor:'#DCEDEF',padding:4,borderRadius:14},segmentButton:{flex:1,padding:12,alignItems:'center',borderRadius:11},segmentActive:{backgroundColor:'#152A46'},segmentText:{fontFamily:'Inter_600SemiBold',color:'#607083'},segmentTextActive:{color:'#E8F8A7'},hero:{backgroundColor:'#152A46',borderRadius:22,padding:20,gap:16},badge:{alignSelf:'flex-start',flexDirection:'row',alignItems:'center',gap:5,backgroundColor:'#B8E63D',borderRadius:20,paddingVertical:6,paddingHorizontal:10},badgeText:{fontFamily:'Inter_700Bold',fontSize:11,color:'#152A46'},heroTop:{flexDirection:'row',justifyContent:'space-between',alignItems:'flex-start'},station:{fontFamily:'Inter_700Bold',fontSize:25,color:'#fff'},place:{fontFamily:'Inter_400Regular',color:'#C8D5DF',marginTop:4},price:{fontFamily:'Inter_700Bold',fontSize:25,color:'#B8E63D'},per:{fontFamily:'Inter_500Medium',fontSize:13},savingBox:{backgroundColor:'#203B5B',borderRadius:16,padding:15},savingLabel:{fontFamily:'Inter_500Medium',color:'#D8E5EC',fontSize:12},saving:{fontFamily:'Inter_700Bold',fontSize:34,color:'#B8E63D',marginVertical:3},breakdown:{flexDirection:'row',flexWrap:'wrap',alignItems:'center',gap:5,marginBottom:6},breakdownText:{fontFamily:'Inter_500Medium',fontSize:11,color:'#D8E5EC'},breakdownDot:{color:'#8EA2B1'},small:{fontFamily:'Inter_400Regular',fontSize:11,color:'#AFC0CC',lineHeight:16},navigate:{height:50,borderRadius:14,backgroundColor:'#203B5B',borderWidth:1,borderColor:'#B8E63D',flexDirection:'row',gap:8,alignItems:'center',justifyContent:'center'},navigateText:{fontFamily:'Inter_700Bold',color:'#E8F8A7'},headingRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',marginTop:4},heading:{fontFamily:'Inter_700Bold',fontSize:18,color:'#152A46'},link:{fontFamily:'Inter_600SemiBold',color:'#497A83'},stationCard:{backgroundColor:'#fff',borderRadius:16,padding:16,borderWidth:1,borderColor:'#CBDCDD',flexDirection:'row',justifyContent:'space-between',alignItems:'center'},cardName:{fontFamily:'Inter_700Bold',fontSize:17,color:'#152A46'},cardMeta:{fontFamily:'Inter_400Regular',fontSize:12,color:'#607083',marginTop:4},right:{alignItems:'flex-end'},cardPrice:{fontFamily:'Inter_700Bold',fontSize:16,color:'#152A46'},cardSaving:{fontFamily:'Inter_600SemiBold',fontSize:12,color:'#58821D',marginTop:4},dev:{flexDirection:'row',gap:7,alignItems:'center',padding:4},devText:{flex:1,fontFamily:'Inter_400Regular',fontSize:11,color:'#607083'}
 });
