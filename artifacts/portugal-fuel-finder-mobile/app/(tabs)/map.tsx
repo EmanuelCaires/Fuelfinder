@@ -1,38 +1,51 @@
-import { Feather, MaterialIcons } from '@expo/vector-icons';
-import { getFavoriteIds, toggleFavorite } from '../../lib/favorites';
+import { Feather } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, type Region } from 'react-native-maps';
 import {
-  DevelopmentStationProvider,
-  getNearbyStations,
-  type FuelKind,
-  type NearbyStation,
-} from '../../lib/stations';
+  ActivityIndicator,
+  Linking,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import MapView, { Marker, type Region } from 'react-native-maps';
 
-const provider = new DevelopmentStationProvider();
+import { DataStateBanner } from '../../components/data-state-banner';
+import { useFuelStationsV2 } from '../../hooks/use-fuel-stations-v2';
+import type { FuelKind, NearbyFuelStation } from '../../lib/data/types';
+import { getFavoriteIds, toggleFavorite } from '../../lib/favorites';
 
 export default function MapScreen() {
   const mapRef = useRef<MapView | null>(null);
   const [fuel, setFuel] = useState<FuelKind>('diesel');
-  const [stations, setStations] = useState<NearbyStation[]>([]);
-  const [selected, setSelected] = useState<NearbyStation | null>(null);
+  const [selected, setSelected] = useState<NearbyFuelStation | null>(null);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [region, setRegion] = useState<Region | null>(null);
   const [place, setPlace] = useState('A obter localização…');
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const {
+    stations,
+    loading,
+    error,
+    providerName,
+    refresh: refreshStations,
+  } = useFuelStationsV2({
+    latitude: region?.latitude,
+    longitude: region?.longitude,
+    radiusKm: 60,
+  });
+
+  const loadLocation = useCallback(async () => {
+    setLocationError(null);
 
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
+
       if (permission.status !== 'granted') {
-        setError('Permite a localização para veres os postos no mapa.');
+        setLocationError('Permite a localização para veres os postos no mapa.');
         return;
       }
 
@@ -53,39 +66,53 @@ export default function MapScreen() {
           latitude: current.coords.latitude,
           longitude: current.coords.longitude,
         });
-        setPlace(address?.city || address?.subregion || address?.region || 'Localização atual');
+        setPlace(
+          address?.city ||
+            address?.subregion ||
+            address?.region ||
+            'Localização atual',
+        );
       } catch {
         setPlace('Localização atual');
       }
-
-      const nearby = await getNearbyStations(
-        provider,
-        current.coords.latitude,
-        current.coords.longitude,
-        60,
-      );
-      setStations(nearby);
-      setSelected(currentSelection => currentSelection ?? nearby[0] ?? null);
     } catch {
-      setError('Não foi possível obter a tua localização.');
-    } finally {
-      setLoading(false);
+      setLocationError('Não foi possível obter a tua localização.');
     }
   }, []);
 
-  useFocusEffect(useCallback(() => {
-    load();
-    getFavoriteIds().then(setFavoriteIds);
-  }, [load]));
-
-  const selectedPrice = useMemo(
-    () => selected ? selected[fuel] : null,
-    [selected, fuel],
+  useFocusEffect(
+    useCallback(() => {
+      loadLocation();
+      getFavoriteIds().then(setFavoriteIds);
+    }, [loadLocation]),
   );
 
-  const navigate = useCallback(async (station: NearbyStation) => {
+  // Keep selected station data fresh, but do NOT auto-select a station.
+  useFocusEffect(
+    useCallback(() => {
+      if (!selected) return;
+
+      const freshSelected = stations.find(item => item.id === selected.id);
+
+      if (freshSelected) {
+        setSelected(freshSelected);
+      } else if (stations.length > 0) {
+        setSelected(null);
+      }
+    }, [stations, selected]),
+  );
+
+  const selectedPrice = useMemo(() => {
+    if (!selected) return null;
+    const value = selected[fuel];
+    return typeof value === 'number' ? value : null;
+  }, [selected, fuel]);
+
+  const navigate = useCallback(async (station: NearbyFuelStation) => {
     const destination = `${station.latitude},${station.longitude}`;
-    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=driving`;
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
+      destination,
+    )}&travelmode=driving`;
     await Linking.openURL(url);
   }, []);
 
@@ -95,7 +122,6 @@ export default function MapScreen() {
     const stationId = selected.id;
     const wasFavorite = favoriteIds.includes(stationId);
 
-    // Update immediately so the user sees the heart change state.
     setFavoriteIds(current =>
       wasFavorite
         ? current.filter(id => id !== stationId)
@@ -110,7 +136,6 @@ export default function MapScreen() {
           : current.filter(id => id !== stationId),
       );
     } catch {
-      // Restore previous state if local storage fails.
       setFavoriteIds(current =>
         wasFavorite
           ? Array.from(new Set([...current, stationId]))
@@ -120,12 +145,10 @@ export default function MapScreen() {
   }, [selected, favoriteIds]);
 
   const centerOnMe = useCallback(() => {
-    if (region) {
-      mapRef.current?.animateToRegion(region, 500);
-    }
+    if (region) mapRef.current?.animateToRegion(region, 500);
   }, [region]);
 
-  if (loading && !region) {
+  if (!region && !locationError) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" />
@@ -141,8 +164,8 @@ export default function MapScreen() {
           <Feather name="map-pin" size={28} color="#17345B" />
         </View>
         <Text style={styles.errorTitle}>Precisamos da tua localização</Text>
-        <Text style={styles.errorText}>{error}</Text>
-        <Pressable style={styles.retry} onPress={load}>
+        <Text style={styles.errorText}>{locationError}</Text>
+        <Pressable style={styles.retry} onPress={loadLocation}>
           <Text style={styles.retryText}>Tentar novamente</Text>
         </Pressable>
       </View>
@@ -167,10 +190,15 @@ export default function MapScreen() {
               longitude: station.longitude,
             }}
             onPress={() => setSelected(station)}
-            tracksViewChanges={true}
+            tracksViewChanges
             anchor={{ x: 0.5, y: 0.5 }}
           >
-            <View style={[styles.marker, selected?.id === station.id && styles.markerSelected]}>
+            <View
+              style={[
+                styles.marker,
+                selected?.id === station.id && styles.markerSelected,
+              ]}
+            >
               <Text style={styles.markerSymbol}>€</Text>
             </View>
           </Marker>
@@ -181,7 +209,9 @@ export default function MapScreen() {
         <View style={styles.topRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>Mapa</Text>
-            <Text style={styles.subtitle}>{place} · {stations.length} postos de desenvolvimento</Text>
+            <Text style={styles.subtitle}>
+              {place} · {stations.length} postos · {providerName}
+            </Text>
           </View>
           <Pressable style={styles.locationButton} onPress={centerOnMe}>
             <Feather name="crosshair" size={22} color="#17345B" />
@@ -190,37 +220,77 @@ export default function MapScreen() {
 
         <View style={styles.segment}>
           <Pressable
-            style={[styles.segmentItem, fuel === 'diesel' && styles.segmentActive]}
+            style={[
+              styles.segmentItem,
+              fuel === 'diesel' && styles.segmentActive,
+            ]}
             onPress={() => setFuel('diesel')}
           >
-            <Text style={[styles.segmentText, fuel === 'diesel' && styles.segmentTextActive]}>Diesel</Text>
+            <Text
+              style={[
+                styles.segmentText,
+                fuel === 'diesel' && styles.segmentTextActive,
+              ]}
+            >
+              Diesel
+            </Text>
           </Pressable>
           <Pressable
-            style={[styles.segmentItem, fuel === 'petrol' && styles.segmentActive]}
+            style={[
+              styles.segmentItem,
+              fuel === 'petrol' && styles.segmentActive,
+            ]}
             onPress={() => setFuel('petrol')}
           >
-            <Text style={[styles.segmentText, fuel === 'petrol' && styles.segmentTextActive]}>Gasolina 95</Text>
+            <Text
+              style={[
+                styles.segmentText,
+                fuel === 'petrol' && styles.segmentTextActive,
+              ]}
+            >
+              Gasolina 95
+            </Text>
           </Pressable>
+        </View>
+
+        <View style={styles.bannerWrap}>
+          <DataStateBanner
+            loading={loading}
+            error={error}
+            providerName={providerName}
+            onRetry={refreshStations}
+          />
         </View>
       </View>
 
       {selected && selectedPrice !== null && (
         <View style={styles.stationCard}>
-          <View style={styles.stationHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.stationBrand}>{selected.brand}</Text>
-              <Text style={styles.stationPlace}>{selected.place} · {selected.distanceKm.toFixed(1)} km</Text>
-            </View>
-            <Text style={styles.price}>€{selectedPrice.toFixed(3)}<Text style={styles.unit}>/L</Text></Text>
-          </View>
+          <Pressable
+            style={styles.closeButton}
+            onPress={() => setSelected(null)}
+            hitSlop={10}
+          >
+            <Feather name="x" size={22} color="#EAFBB2" />
+          </Pressable>
 
-          <View style={styles.devPill}>
-            <Feather name="info" size={15} color="#7B6410" />
-            <Text style={styles.devText}>Preço de desenvolvimento</Text>
+          <View style={styles.stationHeader}>
+            <View style={{ flex: 1, paddingLeft: 40 }}>
+              <Text style={styles.stationBrand}>{selected.brand}</Text>
+              <Text style={styles.stationPlace}>
+                {selected.place} · {selected.distanceKm.toFixed(1)} km
+              </Text>
+            </View>
+            <Text style={styles.price}>
+              €{selectedPrice.toFixed(3)}
+              <Text style={styles.unit}>/L</Text>
+            </Text>
           </View>
 
           <View style={styles.cardActions}>
-            <Pressable style={styles.detailsButton} onPress={() => router.push(`/station/${selected.id}`)}>
+            <Pressable
+              style={styles.detailsButton}
+              onPress={() => router.push(`/station/${selected.id}`)}
+            >
               <Feather name="info" size={20} color="#EAFBB2" />
               <Text style={styles.detailsText}>Detalhes</Text>
             </Pressable>
@@ -230,21 +300,23 @@ export default function MapScreen() {
                 styles.favoriteMini,
                 favoriteIds.includes(selected.id) && styles.favoriteMiniActive,
               ]}
-              onPress={(event) => {
-                event.stopPropagation();
-                toggleSelectedFavorite();
-              }}
-              hitSlop={10}
+              onPress={toggleSelectedFavorite}
             >
-              <MaterialIcons
-                name={favoriteIds.includes(selected.id) ? 'favorite' : 'favorite-border'}
-                size={25}
+              <Feather
+                name="heart"
+                size={22}
                 color="#17345B"
+                fill={
+                  favoriteIds.includes(selected.id) ? '#17345B' : 'transparent'
+                }
               />
             </Pressable>
           </View>
 
-          <Pressable style={styles.navigate} onPress={() => navigate(selected)}>
+          <Pressable
+            style={styles.navigate}
+            onPress={() => navigate(selected)}
+          >
             <Feather name="navigation" size={21} color="#17345B" />
             <Text style={styles.navigateText}>Navegar até ao posto</Text>
           </Pressable>
@@ -273,8 +345,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 18,
   },
-  errorTitle: { color: '#17345B', fontWeight: '800', fontSize: 23, textAlign: 'center' },
-  errorText: { color: '#6C7A8E', fontSize: 16, textAlign: 'center', marginTop: 8 },
+  errorTitle: {
+    color: '#17345B',
+    fontWeight: '800',
+    fontSize: 23,
+    textAlign: 'center',
+  },
+  errorText: {
+    color: '#6C7A8E',
+    fontSize: 16,
+    textAlign: 'center',
+    marginTop: 8,
+  },
   retry: {
     marginTop: 22,
     backgroundColor: '#B7F333',
@@ -313,10 +395,16 @@ const styles = StyleSheet.create({
     padding: 4,
     marginTop: 14,
   },
-  segmentItem: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 13 },
+  segmentItem: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 13,
+  },
   segmentActive: { backgroundColor: '#17345B' },
   segmentText: { color: '#6C7A8E', fontWeight: '700', fontSize: 15 },
   segmentTextActive: { color: '#EAFBB2' },
+  bannerWrap: { marginTop: 10 },
 
   marker: {
     width: 42,
@@ -349,23 +437,28 @@ const styles = StyleSheet.create({
     borderRadius: 26,
     padding: 20,
   },
-  stationHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  closeButton: {
+    position: 'absolute',
+    top: 14,
+    left: 14,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#244B73',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  stationHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
   stationBrand: { color: 'white', fontSize: 27, fontWeight: '800' },
   stationPlace: { color: '#CFDAE6', fontSize: 15.5, marginTop: 3 },
   price: { color: '#B7F333', fontSize: 28, fontWeight: '900' },
   unit: { fontSize: 14 },
-  devPill: {
-    marginTop: 14,
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    gap: 6,
-    backgroundColor: '#FFF7D7',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    alignItems: 'center',
-  },
-  devText: { color: '#7B6410', fontSize: 12.5, fontWeight: '700' },
+
   cardActions: { marginTop: 15, flexDirection: 'row', gap: 10 },
   detailsButton: {
     flex: 1,
